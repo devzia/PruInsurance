@@ -1,0 +1,182 @@
+use insurance;
+
+DROP PROCEDURE IF EXISTS CREATE_SSZ1_DATA;
+DELIMITER ;;
+
+CREATE PROCEDURE CREATE_SSZ1_DATA()
+BEGIN
+DECLARE num_rows int default 0;
+DECLARE i int default 0;
+DECLARE col_name varchar(100);
+DECLARE dt_type varchar(100);
+DECLARE tblname varchar (100);
+DECLARE descol varchar (100);
+DECLARE sql_text1 varchar (1000);
+DECLARE sql_text2 varchar (1000);
+
+DECLARE stlid int default 0;
+DECLARE StateName varchar(100);
+DECLARE cnt int default 0;
+DECLARE numssz1 int default 0;
+DECLARE numssz2 int default 0;
+DECLARE j int default 0;
+
+
+DECLARE col_names CURSOR FOR
+	SELECT s.stlid, s.StateName, count(*) as cnt,  floor(count(*)/5) as numssz2,  floor (floor(count(*)/5)/5) as numssz1 FROM city c, statelist s
+	where s.stlid =  c.stlid
+	group by c.stlid;
+open col_names;
+
+select FOUND_ROWS() into num_rows;
+
+SET i = 1;
+
+the_loop: LOOP
+
+   IF i > num_rows THEN
+        CLOSE col_names;
+        LEAVE the_loop;
+    END IF;
+
+   FETCH col_names INTO sid, StateName, cnt, numssz2, numssz1;   
+
+   SET i = i + 1;  
+   
+   SET j = 0;
+   
+   inner_loop: LOOP
+   
+		IF j > numssz1 THEN
+			LEAVE inner_loop;
+		END IF;
+
+		SET j = j + 1;
+		set sql_text2 = concat('INSERT INTO statesubzone1 (SSZ1Name,SSZ1Desc,sid) VALUES ("',sid,'_SSZ1_',j,'","',StateName,' State SubZone 1 ',j,'",',sid,');')
+		PREPARE stmt FROM @sql_text2;
+		EXECUTE stmt2;
+		DEALLOCATE PREPARE stmt2;
+
+	END LOOP inner_loop;
+  
+	BLOCK1 : BEGIN
+	
+		DECLARE nssz1 int default 0;
+		DECLARE ssz1id int default 0;
+		DECLARE k int default 0;
+		DECLARE mk int default 0;
+		DECLARE dk int default 0;
+		DECLARE sql_text3 varchar (1000);
+		DECLARE ssz1desc varchar (1000);
+		
+		DECLARE ssz1cur CURSOR FOR
+			SELECT SSZ1ID,SSZ1Desc from statesubzone1 where sid = stlid;
+		open ssz1cur;
+
+		select FOUND_ROWS() into nssz1;
+		
+		SSZ1 : LOOP
+		
+			IF k >= numssz2 THEN
+				LEAVE SSZ1;
+			END IF;
+			
+			SET mk = k%5;
+			SET dk = numssz2 - k;
+			
+			IF mk = 0 THEN
+				IF dk >= 3 THEN
+					FETCH ssz1cur into ssz1id, ssz1desc;
+				END IF;
+			END IF;
+			
+			set sql_text3 = concat('INSERT INTO statesubzone2 (SSZ2Name,SSZ2Desc,SSZ1ID) VALUES ("',sid,'_',ssz1id,'_SSZ2_',k,'","',ssz1desc,' State SubZone 2 ',k,'",',ssz1id,');')
+			PREPARE stmt3 FROM @sql_text3;
+			EXECUTE stmt3;
+			DEALLOCATE PREPARE stmt3;
+					
+			SET k = k + 1;
+
+		END LOOP SSZ1;
+
+	END : BLOCK1;
+	
+    SET j = 0;
+ 
+	BLOCK2 : BEGIN
+	
+		DECLARE nssz2 int default 0;
+		DECLARE ssz2id int default 0;
+		DECLARE k int default 0;
+		DECLARE mk int default 0;
+		DECLARE dk int default 0;
+		DECLARE sql_text3 varchar (1000);
+		DECLARE ssz2desc varchar (1000);
+		
+		DECLARE ssz2cur CURSOR FOR
+			SELECT SSZ2ID,SSZ2Desc from statesubzone1 s1, statesubzone2 s2 where s1.stlid = sid and s1.SSZ1ID = s2.SSZ1ID;
+		open ssz2cur;
+
+		select FOUND_ROWS() into nssz2;
+		
+		SET k = 0;
+		
+		SSZ2 : LOOP
+		
+			IF k >= cnt THEN
+				LEAVE SSZ2;
+			END IF;
+			
+			SET mk = k%5;
+			SET dk = cnt - k;
+			
+			IF mk = 0 THEN
+				IF dk >= 3 THEN
+					FETCH ssz2cur into ssz2id, ssz2desc;
+				END IF;
+			END IF;
+			
+			set sql_text3 = concat('UPDATE  city set SSZ2ID = ssz2id
+			(SSZ2Name,SSZ2Desc,SSZ1ID) VALUES ("',sid,'_',ssz1id,'_SSZ2_',k,'","',ssz1desc,' State SubZone 2 ',k,'",',ssz1id,');')
+			PREPARE stmt3 FROM @sql_text3;
+			EXECUTE stmt3;
+			DEALLOCATE PREPARE stmt3;
+					
+			SET k = k + 1;
+
+		END LOOP SSZ2;
+
+	END : BLOCK2;
+	
+
+	IF dt_type = "decimal" OR col_name = "id" THEN
+		ITERATE the_loop;
+	END IF;
+
+	# select col_name, dt_type;
+	
+    SET @tblname = concat(col_name,"_master");
+   
+    SET @descol = concat(col_name,"_");
+    
+	set @sql_text2 = concat('DROP TABLE IF EXISTS ',@tblname);
+	PREPARE stmt2 FROM @sql_text2;
+    EXECUTE stmt2;
+    DEALLOCATE PREPARE stmt2;
+
+    set @sql_text2 = concat('create table ',@tblname, ' (primary key (id)) select discol as id, concat( "',@descol,'" ,discol) as descp from (select distinct( ',col_name,' ) as discol from  prudential_insrance  where  ',col_name,'  IS NOT NULL) t');
+
+	#set @sql_text2 = concat('insert into tmptbl (id, descp) values ( ', i, '"',@sql_text1,'" ); ');
+	#select @tblname, @descol, @col_name,@sql_text2;
+    
+	#select stmt;
+	PREPARE stmt2 FROM @sql_text2;
+    EXECUTE stmt2;
+    DEALLOCATE PREPARE stmt2;
+    
+END LOOP the_loop;
+End;
+;;
+DELIMITER ;
+
+call ROWPERROW()
